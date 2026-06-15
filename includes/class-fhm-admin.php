@@ -37,6 +37,7 @@ class FHM_Admin {
 		echo '<th>' . esc_html__( 'Nume', 'fhm' ) . '</th>';
 		echo '<th>' . esc_html__( 'Telefon', 'fhm' ) . '</th>';
 		echo '<th>' . esc_html__( 'Email', 'fhm' ) . '</th>';
+		echo '<th>' . esc_html__( 'Produs', 'fhm' ) . '</th>';
 		echo '<th>' . esc_html__( 'Detalii', 'fhm' ) . '</th>';
 		echo '<th>' . esc_html__( 'Status', 'fhm' ) . '</th>';
 		echo '</tr></thead><tbody>';
@@ -48,12 +49,13 @@ class FHM_Admin {
 				echo '<td>' . esc_html( $r->nume ) . '</td>';
 				echo '<td>' . esc_html( $r->telefon ) . '</td>';
 				echo '<td>' . esc_html( $r->email ) . '</td>';
+				echo '<td>' . esc_html( $r->produs ) . '</td>';
 				echo '<td>' . esc_html( $r->detalii ) . '</td>';
 				echo '<td>' . esc_html( $r->status ) . '</td>';
 				echo '</tr>';
 			}
 		} else {
-			echo '<tr><td colspan="7">' . esc_html__( 'Încă nu există cereri.', 'fhm' ) . '</td></tr>';
+			echo '<tr><td colspan="8">' . esc_html__( 'Încă nu există cereri.', 'fhm' ) . '</td></tr>';
 		}
 		echo '</tbody></table></div>';
 	}
@@ -68,10 +70,10 @@ class FHM_Admin {
 		header( 'Content-Disposition: attachment; filename=lead-uri-montaj.csv' );
 		$out = fopen( 'php://output', 'w' );
 		fwrite( $out, "\xEF\xBB\xBF" ); // BOM pentru diacritice corecte în Excel
-		fputcsv( $out, array( 'ID', 'Data', 'Judet', 'Slug', 'Nume', 'Telefon', 'Email', 'Detalii', 'IP', 'Status' ) );
+		fputcsv( $out, array( 'ID', 'Data', 'Judet', 'Slug', 'Nume', 'Telefon', 'Email', 'Produs', 'Detalii', 'IP', 'Status' ) );
 		if ( $rows ) {
 			foreach ( $rows as $r ) {
-				fputcsv( $out, array( $r['id'], $r['created_at'], $r['judet'], $r['judet_slug'], $r['nume'], $r['telefon'], $r['email'], $r['detalii'], $r['ip'], $r['status'] ) );
+				fputcsv( $out, array( $r['id'], $r['created_at'], $r['judet'], $r['judet_slug'], $r['nume'], $r['telefon'], $r['email'], $r['produs'], $r['detalii'], $r['ip'], $r['status'] ) );
 			}
 		}
 		fclose( $out );

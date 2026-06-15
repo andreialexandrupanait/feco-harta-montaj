@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  */
 class FHM_DB {
 
-	const VERSION = '1.0';
+	const VERSION = '1.1';
 
 	public static function table() {
 		global $wpdb;
@@ -25,6 +25,7 @@ class FHM_DB {
 			nume VARCHAR(190) NOT NULL DEFAULT '',
 			telefon VARCHAR(40) NOT NULL DEFAULT '',
 			email VARCHAR(190) NOT NULL DEFAULT '',
+			produs VARCHAR(190) NOT NULL DEFAULT '',
 			detalii TEXT NULL,
 			ip VARCHAR(45) NOT NULL DEFAULT '',
 			status VARCHAR(20) NOT NULL DEFAULT 'nou',
@@ -54,11 +55,12 @@ class FHM_DB {
 				'nume'       => $d['nume'],
 				'telefon'    => $d['telefon'],
 				'email'      => $d['email'],
+				'produs'     => $d['produs'],
 				'detalii'    => $d['detalii'],
 				'ip'         => $d['ip'],
 				'status'     => 'nou',
 			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 	}
 

@@ -20,14 +20,41 @@ class FHM_Shortcode {
 		wp_register_script( 'fhm', FHM_URL . 'assets/js/fhm.js', array(), file_exists( $js ) ? filemtime( $js ) : FHM_VERSION, true );
 	}
 
+	/**
+	 * Lista de produse pentru câmpul „Produs solicitat", luată din WooCommerce.
+	 * Dacă WooCommerce nu e activ, întoarce array gol => câmpul nu se randează.
+	 *
+	 * @return array Listă de array-uri { id, name }.
+	 */
+	private static function products() {
+		$products = array();
+		if ( function_exists( 'wc_get_products' ) ) {
+			$items = wc_get_products( array(
+				'status'  => 'publish',
+				'limit'   => -1,
+				'orderby' => 'title',
+				'order'   => 'ASC',
+				'return'  => 'objects',
+			) );
+			foreach ( $items as $p ) {
+				$products[] = array(
+					'id'   => (int) $p->get_id(),
+					'name' => $p->get_name(),
+				);
+			}
+		}
+		return apply_filters( 'fhm_products', $products );
+	}
+
 	public static function render( $atts = array() ) {
 		// Enqueue numai la randarea shortcode-ului => încarcă doar pe această pagină.
 		wp_enqueue_style( 'fhm' );
 		wp_enqueue_script( 'fhm' );
 		wp_localize_script( 'fhm', 'FHM_DATA', array(
-			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'fhm_submit' ),
-			'svgUrl'  => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
+			'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+			'nonce'    => wp_create_nonce( 'fhm_submit' ),
+			'svgUrl'   => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
+			'products' => self::products(),
 		) );
 
 		ob_start();
