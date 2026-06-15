@@ -1,5 +1,5 @@
 === FECO – Harta Montaj Fose Septice ===
-Version: 1.0.1
+Version: 1.0.2
 Requires at least: 5.5
 Requires PHP: 7.2
 
