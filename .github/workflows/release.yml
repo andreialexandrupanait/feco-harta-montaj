@@ -1,0 +1,71 @@
+name: Release plugin
+
+# Creează automat un GitHub Release de fiecare dată când versiunea din header-ul
+# plugin-ului crește și se face merge în `main`. Zero release-uri manuale:
+#   bump „Version:" în feco-harta-montaj.php  ->  merge în main  ->  Release v<versiune>
+# cu zip-ul atașat. WordPress vede update-ul „cu 1 click".
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Citește versiunea din header
+        id: ver
+        run: |
+          VERSION=$(grep -iE '^[[:space:]]*\*?[[:space:]]*Version:' feco-harta-montaj.php \
+            | head -1 | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')
+          if [ -z "$VERSION" ]; then
+            echo "Nu am putut citi versiunea din feco-harta-montaj.php" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Versiune detectată: $VERSION"
+
+      - name: Verifică dacă Release-ul există deja
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v${{ steps.ver.outputs.version }} există deja — nu fac nimic."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Construiește zip-ul plugin-ului
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          mkdir -p build/feco-harta-montaj
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='build' \
+            --exclude='CLAUDE.md' \
+            ./ build/feco-harta-montaj/
+          ( cd build && zip -rq "feco-harta-montaj-${VERSION}.zip" feco-harta-montaj )
+          echo "Construit: build/feco-harta-montaj-${VERSION}.zip"
+
+      - name: Creează Release-ul
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          gh release create "v${VERSION}" \
+            "build/feco-harta-montaj-${VERSION}.zip" \
+            --title "v${VERSION}" \
+            --target "${{ github.sha }}" \
+            --generate-notes
+          echo "Release v${VERSION} creat."
