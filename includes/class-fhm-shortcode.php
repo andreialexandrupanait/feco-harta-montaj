@@ -8,9 +8,23 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  */
 class FHM_Shortcode {
 
+	const PRODUCTS_CACHE = 'fhm_products_cache';
+
 	public static function init() {
 		add_shortcode( 'feco_harta_montaj', array( __CLASS__, 'render' ) );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
+
+		// Invalidează cache-ul listei de produse când se schimbă produsele.
+		$clear = array( __CLASS__, 'clear_products_cache' );
+		add_action( 'save_post_product', $clear );
+		add_action( 'woocommerce_update_product', $clear );
+		add_action( 'woocommerce_new_product', $clear );
+		add_action( 'trashed_post', $clear );
+		add_action( 'untrashed_post', $clear );
+	}
+
+	public static function clear_products_cache() {
+		delete_transient( self::PRODUCTS_CACHE );
 	}
 
 	public static function register_assets() {
@@ -22,17 +36,23 @@ class FHM_Shortcode {
 
 	/**
 	 * Lista de produse pentru câmpul „Produs solicitat", luată din WooCommerce.
+	 * Ordinea respectă sortarea din shop (menu_order). Rezultatul e cache-uit.
 	 * Dacă WooCommerce nu e activ, întoarce array gol => câmpul nu se randează.
 	 *
 	 * @return array Listă de array-uri { id, name }.
 	 */
 	private static function products() {
+		$cached = get_transient( self::PRODUCTS_CACHE );
+		if ( is_array( $cached ) ) {
+			return apply_filters( 'fhm_products', $cached );
+		}
+
 		$products = array();
 		if ( function_exists( 'wc_get_products' ) ) {
 			$items = wc_get_products( array(
 				'status'  => 'publish',
 				'limit'   => -1,
-				'orderby' => 'title',
+				'orderby' => 'menu_order',
 				'order'   => 'ASC',
 				'return'  => 'objects',
 			) );
@@ -43,18 +63,37 @@ class FHM_Shortcode {
 				);
 			}
 		}
+
+		set_transient( self::PRODUCTS_CACHE, $products, 12 * HOUR_IN_SECONDS );
 		return apply_filters( 'fhm_products', $products );
+	}
+
+	/**
+	 * Cheia site reCAPTCHA v3 dacă e configurată în wp-config.php; altfel ''.
+	 *
+	 * @return string
+	 */
+	private static function recaptcha_key() {
+		return ( defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY ) ? (string) FHM_RECAPTCHA_SITE_KEY : '';
 	}
 
 	public static function render( $atts = array() ) {
 		// Enqueue numai la randarea shortcode-ului => încarcă doar pe această pagină.
 		wp_enqueue_style( 'fhm' );
 		wp_enqueue_script( 'fhm' );
+
+		$recaptcha_key = self::recaptcha_key();
+		if ( '' !== $recaptcha_key ) {
+			wp_enqueue_script( 'fhm-recaptcha', 'https://www.google.com/recaptcha/api.js?render=' . rawurlencode( $recaptcha_key ), array(), null, true );
+		}
+
 		wp_localize_script( 'fhm', 'FHM_DATA', array(
-			'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
-			'nonce'    => wp_create_nonce( 'fhm_submit' ),
-			'svgUrl'   => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
-			'products' => self::products(),
+			'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
+			'nonce'        => wp_create_nonce( 'fhm_submit' ),
+			'svgUrl'       => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
+			'products'     => self::products(),
+			'privacyUrl'   => get_privacy_policy_url(),
+			'recaptchaKey' => $recaptcha_key,
 		) );
 
 		ob_start();

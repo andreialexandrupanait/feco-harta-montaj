@@ -6,7 +6,17 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  */
 class FHM_DB {
 
-	const VERSION = '1.1';
+	const VERSION = '1.2';
+
+	/** Statusuri permise pentru un lead. */
+	public static function statuses() {
+		return array(
+			'nou'       => __( 'Nou', 'fhm' ),
+			'contactat' => __( 'Contactat', 'fhm' ),
+			'ofertat'   => __( 'Ofertat', 'fhm' ),
+			'inchis'    => __( 'Închis', 'fhm' ),
+		);
+	}
 
 	public static function table() {
 		global $wpdb;
@@ -26,6 +36,7 @@ class FHM_DB {
 			telefon VARCHAR(40) NOT NULL DEFAULT '',
 			email VARCHAR(190) NOT NULL DEFAULT '',
 			produs VARCHAR(190) NOT NULL DEFAULT '',
+			localitate VARCHAR(190) NOT NULL DEFAULT '',
 			detalii TEXT NULL,
 			ip VARCHAR(45) NOT NULL DEFAULT '',
 			status VARCHAR(20) NOT NULL DEFAULT 'nou',
@@ -56,24 +67,125 @@ class FHM_DB {
 				'telefon'    => $d['telefon'],
 				'email'      => $d['email'],
 				'produs'     => $d['produs'],
+				'localitate' => $d['localitate'],
 				'detalii'    => $d['detalii'],
 				'ip'         => $d['ip'],
 				'status'     => 'nou',
 			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 	}
 
-	public static function get_recent( $limit = 500 ) {
+	/**
+	 * Construiește clauza WHERE din filtre (cu placeholdere) și colectează parametrii.
+	 *
+	 * @param array $args   Filtre: judet_slug, produs, date_from, date_to, search.
+	 * @param array $params Referință — se umple cu valorile pentru prepare().
+	 * @return string Clauza WHERE (fără cuvântul „WHERE").
+	 */
+	private static function build_where( array $args, array &$params ) {
 		global $wpdb;
-		$table = self::table();
-		$limit = (int) $limit;
-		return $wpdb->get_results( "SELECT * FROM $table ORDER BY created_at DESC LIMIT $limit" );
+		$where  = array( '1=1' );
+		$params = array();
+
+		if ( ! empty( $args['judet_slug'] ) ) {
+			$where[]  = 'judet_slug = %s';
+			$params[] = $args['judet_slug'];
+		}
+		if ( ! empty( $args['produs'] ) ) {
+			$where[]  = 'produs = %s';
+			$params[] = $args['produs'];
+		}
+		if ( ! empty( $args['date_from'] ) ) {
+			$where[]  = 'created_at >= %s';
+			$params[] = $args['date_from'] . ' 00:00:00';
+		}
+		if ( ! empty( $args['date_to'] ) ) {
+			$where[]  = 'created_at <= %s';
+			$params[] = $args['date_to'] . ' 23:59:59';
+		}
+		if ( ! empty( $args['search'] ) ) {
+			$like     = '%' . $wpdb->esc_like( $args['search'] ) . '%';
+			$where[]  = '(nume LIKE %s OR telefon LIKE %s OR email LIKE %s OR localitate LIKE %s)';
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+		}
+
+		return implode( ' AND ', $where );
 	}
 
-	public static function get_all() {
+	/**
+	 * Lead-uri filtrate, ordonate descrescător după dată, cu paginare opțională.
+	 *
+	 * @param array $args judet_slug, produs, date_from, date_to, search, limit, offset, output.
+	 */
+	public static function get_filtered( array $args = array() ) {
+		global $wpdb;
+		$table  = self::table();
+		$params = array();
+		$where  = self::build_where( $args, $params );
+		$output = isset( $args['output'] ) ? $args['output'] : OBJECT;
+
+		$sql   = "SELECT * FROM $table WHERE $where ORDER BY created_at DESC";
+		$limit = isset( $args['limit'] ) ? (int) $args['limit'] : 0;
+		if ( $limit > 0 ) {
+			$offset   = isset( $args['offset'] ) ? (int) $args['offset'] : 0;
+			$sql     .= ' LIMIT %d OFFSET %d';
+			$params[] = $limit;
+			$params[] = $offset;
+		}
+
+		if ( $params ) {
+			return $wpdb->get_results( $wpdb->prepare( $sql, $params ), $output );
+		}
+		return $wpdb->get_results( $sql, $output );
+	}
+
+	/** Numărul total de lead-uri care corespund filtrelor (pentru paginare). */
+	public static function count_filtered( array $args = array() ) {
+		global $wpdb;
+		$table  = self::table();
+		$params = array();
+		$where  = self::build_where( $args, $params );
+		$sql    = "SELECT COUNT(*) FROM $table WHERE $where";
+
+		if ( $params ) {
+			return (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
+		}
+		return (int) $wpdb->get_var( $sql );
+	}
+
+	/** Actualizează statusul unui lead (status validat de apelant). */
+	public static function update_status( $id, $status ) {
+		global $wpdb;
+		return $wpdb->update(
+			self::table(),
+			array( 'status' => $status ),
+			array( 'id' => (int) $id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/** Șterge un lead. */
+	public static function delete( $id ) {
+		global $wpdb;
+		return $wpdb->delete( self::table(), array( 'id' => (int) $id ), array( '%d' ) );
+	}
+
+	/** Județe distincte prezente în lead-uri (pentru filtrul din admin). */
+	public static function distinct_judete() {
 		global $wpdb;
 		$table = self::table();
-		return $wpdb->get_results( "SELECT * FROM $table ORDER BY created_at DESC", ARRAY_A );
+		return $wpdb->get_results( "SELECT DISTINCT judet, judet_slug FROM $table WHERE judet <> '' ORDER BY judet ASC" );
+	}
+
+	/** Produse distincte prezente în lead-uri (pentru filtrul din admin). */
+	public static function distinct_produse() {
+		global $wpdb;
+		$table = self::table();
+		return $wpdb->get_col( "SELECT DISTINCT produs FROM $table WHERE produs <> '' ORDER BY produs ASC" );
 	}
 }
