@@ -40,6 +40,17 @@ class FHM_Ajax {
 		$detalii = isset( $_POST['detalii'] ) ? sanitize_textarea_field( wp_unslash( $_POST['detalii'] ) ) : '';
 		$consent = ! empty( $_POST['consent'] );
 
+		// Produs (opțional): rezolvăm ID-ul WooCommerce în numele canonic,
+		// ca să nu stocăm text arbitrar din client.
+		$produs_id = isset( $_POST['produs_id'] ) ? (int) $_POST['produs_id'] : 0;
+		$produs    = '';
+		if ( $produs_id && function_exists( 'wc_get_product' ) ) {
+			$wc_product = wc_get_product( $produs_id );
+			if ( $wc_product ) {
+				$produs = $wc_product->get_name();
+			}
+		}
+
 		if ( '' === $nume || '' === $telefon || '' === $judet ) {
 			wp_send_json_error( array( 'message' => __( 'Completează numele, telefonul și județul.', 'fhm' ) ) );
 		}
@@ -56,6 +67,7 @@ class FHM_Ajax {
 			'nume'       => $nume,
 			'telefon'    => $telefon,
 			'email'      => $email,
+			'produs'     => $produs,
 			'detalii'    => $detalii,
 			'ip'         => self::ip(),
 		) );
@@ -75,6 +87,7 @@ class FHM_Ajax {
 		$body   .= 'Nume:     ' . $nume . "\n";
 		$body   .= 'Telefon:  ' . $telefon . "\n";
 		$body   .= 'Email:    ' . $email . "\n";
+		$body   .= 'Produs:   ' . $produs . "\n";
 		$body   .= 'Detalii:  ' . $detalii . "\n";
 		$body   .= 'Data:     ' . current_time( 'mysql' ) . "\n";
 		wp_mail( $to, $subject, $body );

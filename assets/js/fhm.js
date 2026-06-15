@@ -33,6 +33,16 @@
 		});
 	}
 
+	function productOptions() {
+		var list = (typeof FHM_DATA !== 'undefined' && FHM_DATA.products) ? FHM_DATA.products : [];
+		if (!list.length) { return ''; }
+		var opts = '<option value="">— Alege produsul (opțional) —</option>';
+		for (var i = 0; i < list.length; i++) {
+			opts += '<option value="' + esc(list[i].id) + '">' + esc(list[i].name) + '</option>';
+		}
+		return '<div class="fhm-field"><label>Produs solicitat</label><select id="fhm-produs">' + opts + '</select></div>';
+	}
+
 	function renderForm(name, sl) {
 		slot.innerHTML =
 			'<div class="fhm-form">' +
@@ -40,9 +50,12 @@
 			'<p class="fhm-sub">Completează datele — te contactăm cu ofertă pentru zona ta.</p>' +
 			'<div class="fhm-field"><label>Județ</label><input class="fhm-locked" id="fhm-judet" value="' + esc(name) + '" readonly></div>' +
 			'<input type="hidden" id="fhm-slug" value="' + esc(sl) + '">' +
+			'<div class="fhm-row">' +
 			'<div class="fhm-field"><label>Nume *</label><input id="fhm-nume" placeholder="Numele tău"></div>' +
 			'<div class="fhm-field"><label>Telefon *</label><input id="fhm-tel" placeholder="07xx xxx xxx"></div>' +
+			'</div>' +
 			'<div class="fhm-field"><label>Email</label><input id="fhm-email" placeholder="email@exemplu.ro"></div>' +
+			productOptions() +
 			'<div class="fhm-field"><label>Detalii (opțional)</label><textarea id="fhm-det" rows="2" placeholder="Capacitate fosă, localitate, termen..."></textarea></div>' +
 			'<div class="fhm-hp"><label>Website</label><input id="fhm-website" autocomplete="off" tabindex="-1"></div>' +
 			'<div class="fhm-field fhm-consent-field"><label class="fhm-consent"><input type="checkbox" id="fhm-consent"> Sunt de acord cu prelucrarea datelor în scopul contactării.</label></div>' +
@@ -65,6 +78,7 @@
 		fd.append('nume', val('fhm-nume'));
 		fd.append('telefon', val('fhm-tel'));
 		fd.append('email', val('fhm-email'));
+		fd.append('produs_id', val('fhm-produs'));
 		fd.append('detalii', val('fhm-det'));
 		fd.append('website', val('fhm-website'));
 		fd.append('consent', document.getElementById('fhm-consent').checked ? '1' : '');
