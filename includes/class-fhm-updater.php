@@ -58,8 +58,10 @@ class FHM_Updater {
 		$api = $checker->getVcsApi();
 		if ( $api && method_exists( $api, 'enableReleaseAssets' ) ) {
 			// Dacă atașezi un .zip ca asset la Release, e preferat în locul
-			// zip-ului generat automat din tag. Numele asset-ului: *.zip.
-			$api->enableReleaseAssets( '/feco-harta-montaj.*\.zip/i' );
+			// zip-ului generat automat din tag. Filtru tolerant la cratime:
+			// prinde atât „feco-harta-montaj-1.0.1.zip" cât și „fecohartamontaj1.0.1.zip".
+			// Dacă niciun asset nu se potrivește, PUC revine la zip-ul sursă (fallback).
+			$api->enableReleaseAssets( '/feco-?harta-?montaj.*\.zip/i' );
 		}
 
 		// Repo PRIVAT: autentificare cu token din wp-config.php.
