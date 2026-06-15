@@ -45,7 +45,7 @@
 			'<div class="fhm-field"><label>Email</label><input id="fhm-email" placeholder="email@exemplu.ro"></div>' +
 			'<div class="fhm-field"><label>Detalii (opțional)</label><textarea id="fhm-det" rows="2" placeholder="Capacitate fosă, localitate, termen..."></textarea></div>' +
 			'<div class="fhm-hp"><label>Website</label><input id="fhm-website" autocomplete="off" tabindex="-1"></div>' +
-			'<div class="fhm-field"><label class="fhm-consent"><input type="checkbox" id="fhm-consent"> Sunt de acord cu prelucrarea datelor în scopul contactării.</label></div>' +
+			'<div class="fhm-field fhm-consent-field"><label class="fhm-consent"><input type="checkbox" id="fhm-consent"> Sunt de acord cu prelucrarea datelor în scopul contactării.</label></div>' +
 			'<button class="fhm-btn" id="fhm-send">Trimite solicitarea</button>' +
 			'<div class="fhm-msg" id="fhm-msg"></div>' +
 			'</div>';
