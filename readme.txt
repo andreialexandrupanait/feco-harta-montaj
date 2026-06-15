@@ -1,7 +1,10 @@
 === FECO – Harta Montaj Fose Septice ===
-Version: 1.0.3
+Version: 1.0.4
+Author: Simplead (https://simplead.ro)
 Requires at least: 5.5
 Requires PHP: 7.2
+
+Dezvoltat de Simplead folosind Claude Code.
 
 Harta interactiva a judetelor Romaniei + formular de solicitare montaj.
 Lead-urile se salveaza intr-o tabela proprie ({prefix}fhm_leads).
