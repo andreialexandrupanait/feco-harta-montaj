@@ -8,6 +8,7 @@ class FHM_Plugin {
 		FHM_DB::maybe_upgrade();      // siguranță: creează tabela dacă lipsește
 		FHM_Shortcode::init();
 		FHM_Ajax::init();
+		FHM_Updater::init();         // update „cu 1 click" din GitHub Releases (doar admin/cron)
 		if ( is_admin() ) {
 			FHM_Admin::init();
 		}
