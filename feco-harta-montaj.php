@@ -2,7 +2,7 @@
 /**
  * Plugin Name: FECO – Hartă Montaj Fose Septice
  * Description: Hartă interactivă a județelor + formular de solicitare montaj. Lead-urile se salvează într-o tabelă proprie. Asset-urile se încarcă DOAR pe paginile cu shortcode-ul [feco_harta_montaj]. Dezvoltat de Simplead folosind Claude Code.
- * Version:     1.0.6
+ * Version:     1.0.7
  * Author:      Simplead
  * Author URI:  https://simplead.ro
  * Text Domain: fhm
@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'FHM_VERSION', '1.0.6' );
+define( 'FHM_VERSION', '1.0.7' );
 define( 'FHM_FILE', __FILE__ );
 define( 'FHM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FHM_URL', plugin_dir_url( __FILE__ ) );
@@ -23,6 +23,7 @@ if ( ! defined( 'FHM_GITHUB_REPO' ) ) {
 }
 
 require_once FHM_DIR . 'includes/class-fhm-db.php';
+require_once FHM_DIR . 'includes/class-fhm-settings.php';
 require_once FHM_DIR . 'includes/class-fhm-shortcode.php';
 require_once FHM_DIR . 'includes/class-fhm-ajax.php';
 require_once FHM_DIR . 'includes/class-fhm-admin.php';

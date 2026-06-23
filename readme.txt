@@ -1,5 +1,5 @@
 === FECO – Harta Montaj Fose Septice ===
-Version: 1.0.6
+Version: 1.0.7
 Author: Simplead (https://simplead.ro)
 Requires at least: 5.5
 Requires PHP: 7.2
@@ -15,9 +15,19 @@ INSTALARE
    (in Elementor: widget "Shortcode").
 3. Cererile apar in admin la meniul "Lead-uri montaj" (+ Export CSV).
 
+SETARI
+Meniu "Lead-uri montaj" > "Setari". De acolo configurezi:
+- Adrese email notificari (una/mai multe, separate prin virgula), expeditor (From), subiect.
+- Auto-reply catre client (on/off + subiect + mesaj).
+- Texte formular (titlu/subtitlu/buton/mesaj succes/consimtamant + URL confidentialitate).
+- Produs obligatoriu + limitare la o categorie WooCommerce.
+- reCAPTCHA v3 (chei in setari sau constante) + rate-limit.
+- Retentie (stergere automata lead-uri vechi) + status implicit.
+- Culori harta (disponibil/selectat/hover).
+
 EMAIL NOTIFICARI
-Implicit merge pe emailul de admin (Setari > General).
-Pentru alt destinatar, intr-un snippet mic:
+Implicit merge pe emailul de admin daca nu setezi adrese in Setari.
+Alternativ, prin filtru:
   add_filter( 'fhm_notify_email', function() { return 'comenzi@feco.ro'; } );
 
 PRODUSE (WooCommerce)
