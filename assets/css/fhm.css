@@ -19,8 +19,8 @@
 .fhm-svg{min-height:220px}
 .fhm-map{width:100%;height:auto;display:block}
 .fhm-loading{padding:60px 18px;text-align:center;color:var(--fhm-muted);font-size:13px}
-.fhm-jud{fill:#cfe0f3;stroke:#fff;stroke-width:1.1;cursor:pointer;transition:fill .12s}
-.fhm-jud:hover{fill:#a8c6e8}
+.fhm-jud{fill:var(--fhm-jud,#cfe0f3);stroke:#fff;stroke-width:1.1;cursor:pointer;transition:fill .12s}
+.fhm-jud:hover{fill:var(--fhm-jud-hover,#a8c6e8)}
 .fhm-jud.fhm-active{fill:var(--fhm-accent)}
 .fhm-lbl{font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;fill:#274257;paint-order:stroke;stroke:#fff;stroke-width:2.4px;stroke-linejoin:round;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
 .fhm-legend{font-size:11px;color:var(--fhm-muted);padding:2px 14px 12px;display:flex;gap:14px;flex-wrap:wrap}

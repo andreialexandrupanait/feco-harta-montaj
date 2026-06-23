@@ -6,9 +6,11 @@
 	var slot    = document.getElementById('fhm-slot');
 	var selname = document.getElementById('fhm-selname');
 	var isMobile = function () { return window.matchMedia('(max-width:720px)').matches; };
+	var T = FHM_DATA.texts || {};
 
 	function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
 	function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+	function txt(key, fallback) { return (T && T[key]) ? T[key] : fallback; }
 
 	// Nonce „cache-safe": pe pagini cu page-cache, nonce-ul randat poate fi expirat,
 	// așa că cerem unul proaspăt la deschiderea formularului.
@@ -58,22 +60,23 @@
 		for (var i = 0; i < list.length; i++) {
 			opts += '<option value="' + esc(list[i].id) + '">' + esc(list[i].name) + '</option>';
 		}
-		return '<div class="fhm-field"><label>Produs solicitat</label><select id="fhm-produs">' + opts + '</select></div>';
+		return '<div class="fhm-field"><label>Produs solicitat</label><select id="fhm-produs">' + opts + '</select><div class="fhm-fielderr" id="fhm-err-produs"></div></div>';
 	}
 
 	function consentLabel() {
+		var base = txt('consent', 'Sunt de acord cu prelucrarea datelor în scopul contactării.');
 		if (FHM_DATA.privacyUrl) {
-			return 'Sunt de acord cu prelucrarea datelor conform <a href="' + esc(FHM_DATA.privacyUrl) + '" target="_blank" rel="noopener">politicii de confidențialitate</a>.';
+			base += ' <a href="' + esc(FHM_DATA.privacyUrl) + '" target="_blank" rel="noopener">Politica de confidențialitate</a>.';
 		}
-		return 'Sunt de acord cu prelucrarea datelor în scopul contactării.';
+		return base;
 	}
 
 	function renderForm(name, sl) {
 		refreshNonce();
 		slot.innerHTML =
 			'<div class="fhm-form">' +
-			'<h3>Montaj fose septice</h3>' +
-			'<p class="fhm-sub">Completează datele — te contactăm cu ofertă pentru zona ta.</p>' +
+			'<h3>' + esc(txt('title', 'Montaj fose septice')) + '</h3>' +
+			'<p class="fhm-sub">' + esc(txt('subtitle', 'Completează datele — te contactăm cu ofertă pentru zona ta.')) + '</p>' +
 			'<div class="fhm-field"><label>Județ</label><input class="fhm-locked" id="fhm-judet" value="' + esc(name) + '" readonly></div>' +
 			'<input type="hidden" id="fhm-slug" value="' + esc(sl) + '">' +
 			'<div class="fhm-row">' +
@@ -88,7 +91,7 @@
 			'<div class="fhm-field"><label>Detalii (opțional)</label><textarea id="fhm-det" rows="2" placeholder="Capacitate fosă, termen..."></textarea></div>' +
 			'<div class="fhm-hp"><label>Website</label><input id="fhm-website" autocomplete="off" tabindex="-1"></div>' +
 			'<div class="fhm-field fhm-consent-field"><label class="fhm-consent"><input type="checkbox" id="fhm-consent"> ' + consentLabel() + '</label><div class="fhm-fielderr" id="fhm-err-consent"></div></div>' +
-			'<button class="fhm-btn" id="fhm-send">Trimite solicitarea</button>' +
+			'<button class="fhm-btn" id="fhm-send">' + esc(txt('button', 'Trimite solicitarea')) + '</button>' +
 			'<div class="fhm-msg" id="fhm-msg"></div>' +
 			'</div>';
 		var btn = document.getElementById('fhm-send');
@@ -99,9 +102,9 @@
 		var e = document.getElementById('fhm-err-' + field);
 		if (e) { e.textContent = message || ''; }
 	}
-	function clearErrs() { ['nume', 'telefon', 'email', 'consent'].forEach(function (f) { setErr(f, ''); }); }
+	function clearErrs() { ['nume', 'telefon', 'email', 'produs', 'consent'].forEach(function (f) { setErr(f, ''); }); }
 	function focusField(field) {
-		var map = { nume: 'fhm-nume', telefon: 'fhm-tel', email: 'fhm-email', consent: 'fhm-consent' };
+		var map = { nume: 'fhm-nume', telefon: 'fhm-tel', email: 'fhm-email', produs: 'fhm-produs', consent: 'fhm-consent' };
 		var el = document.getElementById(map[field] || '');
 		if (el) { el.focus(); }
 	}
@@ -127,6 +130,8 @@
 		if (!validPhone(val('fhm-tel'))) { setErr('telefon', 'Telefon invalid (ex: 07xx xxx xxx).'); ok = false; first = first || 'telefon'; }
 		var email = val('fhm-email').trim();
 		if (email && !validEmail(email)) { setErr('email', 'Adresa de email nu este validă.'); ok = false; first = first || 'email'; }
+		var prodEl = document.getElementById('fhm-produs');
+		if (FHM_DATA.productRequired && prodEl && !prodEl.value) { setErr('produs', 'Te rugăm alege un produs.'); ok = false; first = first || 'produs'; }
 		if (!document.getElementById('fhm-consent').checked) { setErr('consent', 'Trebuie să accepți prelucrarea datelor.'); ok = false; first = first || 'consent'; }
 		if (!ok) { focusField(first); return; }
 
@@ -152,14 +157,14 @@
 					if (res && res.success) {
 						slot.innerHTML = '<div class="fhm-ok"><div class="fhm-ic">&#10003;</div><div style="font-weight:800;font-size:16px">Solicitare trimisă</div><div style="font-size:12.5px;color:#6b7785;margin-top:6px">' + esc(res.data && res.data.message ? res.data.message : 'Mulțumim!') + '</div></div>';
 					} else {
-						btn.disabled = false; btn.textContent = 'Trimite solicitarea';
+						btn.disabled = false; btn.textContent = txt('button', 'Trimite solicitarea');
 						var m = (res.data && res.data.message) ? res.data.message : 'A apărut o eroare.';
 						if (res.data && res.data.field) { setErr(res.data.field, m); focusField(res.data.field); }
 						else { msg.className = 'fhm-msg fhm-err'; msg.textContent = m; }
 					}
 				})
 				.catch(function () {
-					btn.disabled = false; btn.textContent = 'Trimite solicitarea';
+					btn.disabled = false; btn.textContent = txt('button', 'Trimite solicitarea');
 					msg.className = 'fhm-msg fhm-err'; msg.textContent = 'Eroare de rețea. Reîncearcă.';
 				});
 		});

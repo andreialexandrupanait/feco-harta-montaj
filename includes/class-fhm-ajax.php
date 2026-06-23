@@ -36,12 +36,23 @@ class FHM_Ajax {
 		return (bool) preg_match( '/^0(7\d{8}|[23]\d{8})$/', $digits );
 	}
 
+	/** Secretul reCAPTCHA din setări sau, în lipsă, din constantă. */
+	private static function recaptcha_secret() {
+		$secret = FHM_Settings::get( 'recaptcha_secret' );
+		if ( '' === $secret && defined( 'FHM_RECAPTCHA_SECRET' ) && FHM_RECAPTCHA_SECRET ) {
+			$secret = FHM_RECAPTCHA_SECRET;
+		}
+		return $secret;
+	}
+
 	/**
-	 * reCAPTCHA v3: trece dacă nu e configurat (constante absente) sau dacă
-	 * verificarea reușește. Dacă serviciul Google pică, nu blocăm lead-ul.
+	 * reCAPTCHA v3: trece dacă nu e configurat sau dacă verificarea reușește.
+	 * Dacă serviciul Google pică, nu blocăm lead-ul.
 	 */
 	private static function recaptcha_ok() {
-		if ( ! ( defined( 'FHM_RECAPTCHA_SECRET' ) && FHM_RECAPTCHA_SECRET ) ) {
+		$secret  = self::recaptcha_secret();
+		$enabled = FHM_Settings::get( 'recaptcha_enabled' ) || ( defined( 'FHM_RECAPTCHA_SECRET' ) && FHM_RECAPTCHA_SECRET );
+		if ( ! $enabled || '' === $secret ) {
 			return true;
 		}
 		$token = isset( $_POST['recaptcha_token'] ) ? sanitize_text_field( wp_unslash( $_POST['recaptcha_token'] ) ) : '';
@@ -51,7 +62,7 @@ class FHM_Ajax {
 		$resp = wp_remote_post( 'https://www.google.com/recaptcha/api/siteverify', array(
 			'timeout' => 10,
 			'body'    => array(
-				'secret'   => FHM_RECAPTCHA_SECRET,
+				'secret'   => $secret,
 				'response' => $token,
 				'remoteip' => self::ip(),
 			),
@@ -77,10 +88,12 @@ class FHM_Ajax {
 			wp_send_json_success( array( 'message' => __( 'Mulțumim!', 'fhm' ) ) );
 		}
 
-		// Rate-limit simplu pe IP.
-		$key = 'fhm_rl_' . md5( self::ip() );
-		$cnt = (int) get_transient( $key );
-		if ( $cnt >= 6 ) {
+		// Rate-limit simplu pe IP (configurabil din setări).
+		$rl_max    = max( 1, (int) FHM_Settings::get( 'ratelimit_max' ) );
+		$rl_window = max( 1, (int) FHM_Settings::get( 'ratelimit_window' ) );
+		$key       = 'fhm_rl_' . md5( self::ip() );
+		$cnt       = (int) get_transient( $key );
+		if ( $cnt >= $rl_max ) {
 			wp_send_json_error( array( 'message' => __( 'Prea multe cereri. Încearcă peste câteva minute.', 'fhm' ) ) );
 		}
 
@@ -114,6 +127,9 @@ class FHM_Ajax {
 		if ( ! self::valid_phone( $telefon ) ) {
 			wp_send_json_error( array( 'message' => __( 'Numărul de telefon nu pare valid (ex: 07xx xxx xxx).', 'fhm' ), 'field' => 'telefon' ) );
 		}
+		if ( FHM_Settings::get( 'product_required' ) && '' === $produs ) {
+			wp_send_json_error( array( 'message' => __( 'Te rugăm alege un produs.', 'fhm' ), 'field' => 'produs' ) );
+		}
 		if ( ! $consent ) {
 			wp_send_json_error( array( 'message' => __( 'Trebuie să accepți prelucrarea datelor.', 'fhm' ), 'field' => 'consent' ) );
 		}
@@ -131,47 +147,69 @@ class FHM_Ajax {
 			'localitate' => $localitate,
 			'detalii'    => $detalii,
 			'ip'         => self::ip(),
+			'status'     => FHM_Settings::get( 'default_status' ),
 		) );
 
 		if ( false === $ok ) {
 			wp_send_json_error( array( 'message' => __( 'Eroare la salvare. Te rugăm reîncearcă.', 'fhm' ) ) );
 		}
 
-		set_transient( $key, $cnt + 1, 10 * MINUTE_IN_SECONDS );
+		set_transient( $key, $cnt + 1, $rl_window * MINUTE_IN_SECONDS );
 
-		// Email notificare. Schimbi destinatarul fie din Setări > General (admin email),
-		// fie cu filtrul: add_filter('fhm_notify_email', fn() => 'comenzi@feco.ro');
-		$to      = apply_filters( 'fhm_notify_email', get_option( 'admin_email' ) );
-		$subject = sprintf( __( 'Cerere montaj fose septice — %s', 'fhm' ), $judet );
-		$body    = __( 'Cerere nouă de montaj fose septice:', 'fhm' ) . "\n\n";
-		$body   .= 'Județ:      ' . $judet . "\n";
-		$body   .= 'Localitate: ' . $localitate . "\n";
-		$body   .= 'Nume:       ' . $nume . "\n";
-		$body   .= 'Telefon:    ' . $telefon . "\n";
-		$body   .= 'Email:      ' . $email . "\n";
-		$body   .= 'Produs:     ' . $produs . "\n";
-		$body   .= 'Detalii:    ' . $detalii . "\n";
-		$body   .= 'Data:       ' . current_time( 'mysql' ) . "\n";
+		// Destinatari notificare: din setări (listă) sau emailul de admin.
+		$recipients = array();
+		foreach ( explode( ',', (string) FHM_Settings::get( 'notify_emails' ) ) as $e ) {
+			$e = sanitize_email( trim( $e ) );
+			if ( $e && is_email( $e ) ) { $recipients[] = $e; }
+		}
+		if ( empty( $recipients ) ) {
+			$recipients = array( get_option( 'admin_email' ) );
+		}
+		$to = apply_filters( 'fhm_notify_email', $recipients );
 
-		// Reply-To = emailul clientului (dacă e valid), ca să poți răspunde direct.
-		$headers = array();
+		// Subiect cu variabile {judet} / {nume}.
+		$subject = (string) FHM_Settings::get( 'notify_subject' );
+		$subject = str_replace( array( '{judet}', '{nume}' ), array( $judet, $nume ), $subject );
+		if ( '' === trim( $subject ) ) {
+			$subject = sprintf( __( 'Cerere montaj fose septice — %s', 'fhm' ), $judet );
+		}
+
+		$body  = __( 'Cerere nouă de montaj fose septice:', 'fhm' ) . "\n\n";
+		$body .= 'Județ:      ' . $judet . "\n";
+		$body .= 'Localitate: ' . $localitate . "\n";
+		$body .= 'Nume:       ' . $nume . "\n";
+		$body .= 'Telefon:    ' . $telefon . "\n";
+		$body .= 'Email:      ' . $email . "\n";
+		$body .= 'Produs:     ' . $produs . "\n";
+		$body .= 'Detalii:    ' . $detalii . "\n";
+		$body .= 'Data:       ' . current_time( 'mysql' ) . "\n";
+
+		// Headers: From (din setări) + Reply-To = emailul clientului.
+		$headers    = array();
+		$from_email = sanitize_email( (string) FHM_Settings::get( 'from_email' ) );
+		$from_name  = (string) FHM_Settings::get( 'from_name' );
+		if ( $from_email && is_email( $from_email ) ) {
+			$headers[] = 'From: ' . ( $from_name ? $from_name . ' ' : '' ) . '<' . $from_email . '>';
+		}
 		if ( '' !== $email && is_email( $email ) ) {
 			$headers[] = 'Reply-To: ' . $nume . ' <' . $email . '>';
 		}
 		wp_mail( $to, $subject, $body, $headers );
 
-		// Auto-reply către client (dacă a lăsat email). Dezactivabil prin filtru.
-		if ( '' !== $email && is_email( $email ) && apply_filters( 'fhm_autoreply_enabled', true ) ) {
-			$ar_subject = apply_filters( 'fhm_autoreply_subject', __( 'Am primit solicitarea ta — FECO', 'fhm' ) );
-			$ar_body    = sprintf(
-				/* translators: %s = numele clientului */
-				__( "Bună, %s!\n\nAm primit solicitarea ta de montaj fose septice și te vom contacta în cel mai scurt timp cu o ofertă pentru zona ta.\n\nMulțumim,\nEchipa FECO", 'fhm' ),
-				$nume
-			);
-			$ar_body = apply_filters( 'fhm_autoreply_body', $ar_body, $nume, $judet, $produs );
-			wp_mail( $email, $ar_subject, $ar_body );
+		// Auto-reply către client (dacă a lăsat email și e activat).
+		$autoreply = FHM_Settings::get( 'autoreply_enabled' ) && apply_filters( 'fhm_autoreply_enabled', true );
+		if ( '' !== $email && is_email( $email ) && $autoreply ) {
+			$ar_subject = apply_filters( 'fhm_autoreply_subject', (string) FHM_Settings::get( 'autoreply_subject' ) );
+			$ar_body    = str_replace( array( '{nume}', '{judet}' ), array( $nume, $judet ), (string) FHM_Settings::get( 'autoreply_body' ) );
+			$ar_body    = apply_filters( 'fhm_autoreply_body', $ar_body, $nume, $judet, $produs );
+			$ar_headers = array();
+			if ( $from_email && is_email( $from_email ) ) {
+				$ar_headers[] = 'From: ' . ( $from_name ? $from_name . ' ' : '' ) . '<' . $from_email . '>';
+			}
+			wp_mail( $email, $ar_subject, $ar_body, $ar_headers );
 		}
 
-		wp_send_json_success( array( 'message' => __( 'Mulțumim! Te contactăm în cel mai scurt timp.', 'fhm' ) ) );
+		$success = (string) FHM_Settings::get( 'form_success' );
+		wp_send_json_success( array( 'message' => '' !== trim( $success ) ? $success : __( 'Mulțumim! Te contactăm în cel mai scurt timp.', 'fhm' ) ) );
 	}
 }

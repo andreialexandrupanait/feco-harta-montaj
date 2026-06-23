@@ -49,13 +49,18 @@ class FHM_Shortcode {
 
 		$products = array();
 		if ( function_exists( 'wc_get_products' ) ) {
-			$items = wc_get_products( array(
+			$args = array(
 				'status'  => 'publish',
 				'limit'   => -1,
 				'orderby' => 'menu_order',
 				'order'   => 'ASC',
 				'return'  => 'objects',
-			) );
+			);
+			$cat = FHM_Settings::get( 'product_category' );
+			if ( $cat ) {
+				$args['category'] = array( $cat );
+			}
+			$items = wc_get_products( $args );
 			foreach ( $items as $p ) {
 				$products[] = array(
 					'id'   => (int) $p->get_id(),
@@ -68,13 +73,14 @@ class FHM_Shortcode {
 		return apply_filters( 'fhm_products', $products );
 	}
 
-	/**
-	 * Cheia site reCAPTCHA v3 dacă e configurată în wp-config.php; altfel ''.
-	 *
-	 * @return string
-	 */
+	/** Cheia site reCAPTCHA v3 (setări→constantă), doar dacă e activat. */
 	private static function recaptcha_key() {
-		return ( defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY ) ? (string) FHM_RECAPTCHA_SITE_KEY : '';
+		$key = FHM_Settings::get( 'recaptcha_site' );
+		if ( '' === $key && defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY ) {
+			$key = FHM_RECAPTCHA_SITE_KEY;
+		}
+		$enabled = FHM_Settings::get( 'recaptcha_enabled' ) || ( defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY );
+		return ( $enabled && $key ) ? (string) $key : '';
 	}
 
 	public static function render( $atts = array() ) {
@@ -82,19 +88,43 @@ class FHM_Shortcode {
 		wp_enqueue_style( 'fhm' );
 		wp_enqueue_script( 'fhm' );
 
+		// Culori hartă din setări (variabile CSS).
+		$col_avail = sanitize_hex_color( FHM_Settings::get( 'map_color_available' ) );
+		$col_sel   = sanitize_hex_color( FHM_Settings::get( 'map_color_selected' ) );
+		$col_hover = sanitize_hex_color( FHM_Settings::get( 'map_color_hover' ) );
+		if ( $col_avail && $col_sel && $col_hover ) {
+			wp_add_inline_style( 'fhm', '.fhm-wrap{--fhm-jud:' . $col_avail . ';--fhm-accent:' . $col_sel . ';--fhm-jud-hover:' . $col_hover . ';}' );
+		}
+
 		$recaptcha_key = self::recaptcha_key();
 		if ( '' !== $recaptcha_key ) {
 			wp_enqueue_script( 'fhm-recaptcha', 'https://www.google.com/recaptcha/api.js?render=' . rawurlencode( $recaptcha_key ), array(), null, true );
 		}
 
+		$privacy = FHM_Settings::get( 'privacy_url' );
+		if ( '' === $privacy ) {
+			$privacy = get_privacy_policy_url();
+		}
+
 		wp_localize_script( 'fhm', 'FHM_DATA', array(
-			'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-			'nonce'        => wp_create_nonce( 'fhm_submit' ),
-			'svgUrl'       => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
-			'products'     => self::products(),
-			'privacyUrl'   => get_privacy_policy_url(),
-			'recaptchaKey' => $recaptcha_key,
+			'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
+			'nonce'           => wp_create_nonce( 'fhm_submit' ),
+			'svgUrl'          => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
+			'products'        => self::products(),
+			'productRequired' => (bool) FHM_Settings::get( 'product_required' ),
+			'privacyUrl'      => $privacy,
+			'recaptchaKey'    => $recaptcha_key,
+			'texts'           => array(
+				'title'    => FHM_Settings::get( 'form_title' ),
+				'subtitle' => FHM_Settings::get( 'form_subtitle' ),
+				'button'   => FHM_Settings::get( 'form_button' ),
+				'success'  => FHM_Settings::get( 'form_success' ),
+				'consent'  => FHM_Settings::get( 'consent_text' ),
+			),
 		) );
+
+		$sw_avail = $col_avail ? $col_avail : '#cfe0f3';
+		$sw_sel   = $col_sel ? $col_sel : '#3e72bb';
 
 		ob_start();
 		?>
@@ -103,8 +133,8 @@ class FHM_Shortcode {
 				<div class="fhm-head"><span><?php esc_html_e( 'Harta României', 'fhm' ); ?></span><span class="fhm-sel" id="fhm-selname">&mdash;</span></div>
 				<div class="fhm-mapbox"><div class="fhm-svg" id="fhm-svg"><div class="fhm-loading"><?php esc_html_e( 'Se încarcă harta…', 'fhm' ); ?></div></div></div>
 				<div class="fhm-legend">
-					<span class="fhm-lg"><span class="fhm-sw" style="background:#cfe0f3"></span> <?php esc_html_e( 'Disponibil', 'fhm' ); ?></span>
-					<span class="fhm-lg"><span class="fhm-sw" style="background:#3e72bb"></span> <?php esc_html_e( 'Selectat', 'fhm' ); ?></span>
+					<span class="fhm-lg"><span class="fhm-sw" style="background:<?php echo esc_attr( $sw_avail ); ?>"></span> <?php esc_html_e( 'Disponibil', 'fhm' ); ?></span>
+					<span class="fhm-lg"><span class="fhm-sw" style="background:<?php echo esc_attr( $sw_sel ); ?>"></span> <?php esc_html_e( 'Selectat', 'fhm' ); ?></span>
 				</div>
 			</div>
 			<div class="fhm-panel fhm-formpanel">
