@@ -1,10 +1,10 @@
 === FECO – Harta Montaj Fose Septice ===
-Version: 1.0.8
+Version: 1.0.9
 Author: Simplead (https://simplead.ro)
 Requires at least: 5.5
 Requires PHP: 7.2
 
-Dezvoltat de Simplead folosind Claude Code.
+Dezvoltat de Simplead.
 
 Harta interactiva a judetelor Romaniei + formular de solicitare montaj.
 Lead-urile se salveaza intr-o tabela proprie ({prefix}fhm_leads).
@@ -44,6 +44,8 @@ status editabil (nou/contactat/ofertat/inchis), stergere si Export CSV (cu filtr
 Telefonul si emailul sunt clicabile (tel: / mailto:). Fiecare lead are:
 - "Vezi" -> vizualizare in detaliu (toate campurile);
 - "Retrimite" -> retrimite notificarea catre admin pentru acel lead.
+Selectie multipla (bifezi randuri sau "select all") + Actiuni in masa:
+stergere, schimbare status, retrimitere notificare, export CSV doar pentru cele bifate.
 
 EMAIL NOTIFICARE
 Notificarea catre admin e HTML, cu telefon (tel:) si email (mailto:) apelabile.

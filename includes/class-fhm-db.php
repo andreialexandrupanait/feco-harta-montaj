@@ -195,4 +195,16 @@ class FHM_DB {
 		$table = self::table();
 		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", (int) $id ) );
 	}
+
+	/** Mai multe lead-uri după ID-uri (pentru acțiuni în masă / export selectate). */
+	public static function get_by_ids( array $ids, $output = OBJECT ) {
+		global $wpdb;
+		$ids = array_values( array_filter( array_map( 'intval', $ids ) ) );
+		if ( empty( $ids ) ) {
+			return array();
+		}
+		$table = self::table();
+		$place = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table WHERE id IN ($place) ORDER BY created_at DESC", $ids ), $output );
+	}
 }

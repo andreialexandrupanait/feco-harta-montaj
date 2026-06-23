@@ -14,6 +14,7 @@ class FHM_Admin {
 		add_action( 'admin_post_fhm_export', array( __CLASS__, 'export_csv' ) );
 		add_action( 'admin_post_fhm_delete', array( __CLASS__, 'delete_lead' ) );
 		add_action( 'admin_post_fhm_resend', array( __CLASS__, 'resend_notification' ) );
+		add_action( 'admin_post_fhm_bulk', array( __CLASS__, 'bulk_action' ) );
 		add_action( 'wp_ajax_fhm_set_status', array( __CLASS__, 'set_status' ) );
 	}
 
@@ -81,6 +82,18 @@ class FHM_Admin {
 		if ( isset( $_GET['fhm_sent'] ) ) {
 			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Notificare retrimisă către admin.', 'fhm' ) . '</p></div>';
 		}
+		if ( isset( $_GET['fhm_bulk'], $_GET['n'] ) ) {
+			$bulk_msgs = array(
+				'deleted' => __( '%d lead-uri șterse.', 'fhm' ),
+				'status'  => __( 'Status actualizat pentru %d lead-uri.', 'fhm' ),
+				'resent'  => __( 'Notificare retrimisă pentru %d lead-uri.', 'fhm' ),
+				'none'    => __( 'Niciun lead selectat.', 'fhm' ),
+			);
+			$bk = sanitize_key( wp_unslash( $_GET['fhm_bulk'] ) );
+			if ( isset( $bulk_msgs[ $bk ] ) ) {
+				echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( sprintf( $bulk_msgs[ $bk ], (int) $_GET['n'] ) ) . '</p></div>';
+			}
+		}
 
 		// Bară de filtre.
 		echo '<form method="get" style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
@@ -108,7 +121,26 @@ class FHM_Admin {
 
 		echo '<p class="description">' . sprintf( esc_html__( '%d rezultate', 'fhm' ), (int) $total ) . '</p>';
 
+		// Formular acțiuni în masă (învelește tabelul).
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="fhm-bulk-form">';
+		wp_nonce_field( 'fhm_bulk' );
+		echo '<input type="hidden" name="action" value="fhm_bulk">';
+
+		echo '<div class="tablenav top"><div class="alignleft actions bulkactions">';
+		echo '<select name="bulk_action">';
+		echo '<option value="">' . esc_html__( 'Acțiuni în masă', 'fhm' ) . '</option>';
+		echo '<option value="delete">' . esc_html__( 'Șterge', 'fhm' ) . '</option>';
+		foreach ( $statuses as $key => $label ) {
+			printf( '<option value="status:%s">%s</option>', esc_attr( $key ), esc_html( sprintf( __( 'Marchează: %s', 'fhm' ), $label ) ) );
+		}
+		echo '<option value="resend">' . esc_html__( 'Retrimite notificare', 'fhm' ) . '</option>';
+		echo '<option value="export">' . esc_html__( 'Export CSV selectate', 'fhm' ) . '</option>';
+		echo '</select> ';
+		echo '<button class="button action" onclick="return (this.form.bulk_action.value===\'delete\')?confirm(\'' . esc_js( __( 'Ștergi lead-urile selectate?', 'fhm' ) ) . '\'):true">' . esc_html__( 'Aplică', 'fhm' ) . '</button>';
+		echo '</div></div>';
+
 		echo '<table class="widefat striped"><thead><tr>';
+		echo '<td class="check-column"><input type="checkbox" id="fhm-cb-all"></td>';
 		foreach ( array( 'Data', 'Județ', 'Localitate', 'Nume', 'Telefon', 'Email', 'Produs', 'Detalii', 'Status', 'Acțiuni' ) as $h ) {
 			echo '<th>' . esc_html( $h ) . '</th>';
 		}
@@ -121,6 +153,7 @@ class FHM_Admin {
 				$view   = admin_url( 'admin.php?page=fhm-leads&view=' . (int) $r->id );
 
 				echo '<tr>';
+				echo '<th class="check-column"><input type="checkbox" name="ids[]" value="' . (int) $r->id . '"></th>';
 				echo '<td>' . esc_html( $r->created_at ) . '</td>';
 				echo '<td>' . esc_html( $r->judet ) . '</td>';
 				echo '<td>' . esc_html( $r->localitate ) . '</td>';
@@ -144,9 +177,10 @@ class FHM_Admin {
 				echo '</tr>';
 			}
 		} else {
-			echo '<tr><td colspan="10">' . esc_html__( 'Niciun rezultat.', 'fhm' ) . '</td></tr>';
+			echo '<tr><td colspan="11">' . esc_html__( 'Niciun rezultat.', 'fhm' ) . '</td></tr>';
 		}
 		echo '</tbody></table>';
+		echo '</form>';
 
 		// Paginare (pattern canonic WP: numar mare inlocuit cu %#%, fara probleme de encoding).
 		if ( $pages > 1 ) {
@@ -175,6 +209,12 @@ class FHM_Admin {
 		( function () {
 			var url = <?php echo wp_json_encode( $ajax_url ); ?>;
 			var nonce = <?php echo wp_json_encode( $ajax_nonce ); ?>;
+			var cbAll = document.getElementById( 'fhm-cb-all' );
+			if ( cbAll ) {
+				cbAll.addEventListener( 'change', function () {
+					document.querySelectorAll( 'input[name="ids[]"]' ).forEach( function ( cb ) { cb.checked = cbAll.checked; } );
+				} );
+			}
 			document.querySelectorAll( '.fhm-status-select' ).forEach( function ( sel ) {
 				sel.addEventListener( 'change', function () {
 					var fd = new FormData();
@@ -262,6 +302,67 @@ class FHM_Admin {
 		exit;
 	}
 
+	public static function bulk_action() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acces interzis.', 'fhm' ) ); }
+		check_admin_referer( 'fhm_bulk' );
+
+		$ids    = isset( $_POST['ids'] ) ? array_values( array_filter( array_map( 'intval', (array) wp_unslash( $_POST['ids'] ) ) ) ) : array();
+		$action = isset( $_POST['bulk_action'] ) ? sanitize_text_field( wp_unslash( $_POST['bulk_action'] ) ) : '';
+
+		$back = wp_get_referer();
+		if ( ! $back ) { $back = admin_url( 'admin.php?page=fhm-leads' ); }
+		$back = remove_query_arg( array( 'fhm_bulk', 'n', 'fhm_deleted', 'fhm_sent' ), $back );
+
+		if ( empty( $ids ) || '' === $action ) {
+			wp_safe_redirect( add_query_arg( array( 'fhm_bulk' => 'none', 'n' => 0 ), $back ) );
+			exit;
+		}
+
+		// Export CSV doar pentru selectate (fără redirect).
+		if ( 'export' === $action ) {
+			self::stream_csv( FHM_DB::get_by_ids( $ids, ARRAY_A ) );
+			exit;
+		}
+
+		$type = 'none';
+		$n    = 0;
+		if ( 'delete' === $action ) {
+			foreach ( $ids as $id ) { FHM_DB::delete( $id ); $n++; }
+			$type = 'deleted';
+		} elseif ( 0 === strpos( $action, 'status:' ) ) {
+			$status = sanitize_key( substr( $action, 7 ) );
+			if ( array_key_exists( $status, FHM_DB::statuses() ) ) {
+				foreach ( $ids as $id ) { FHM_DB::update_status( $id, $status ); $n++; }
+				$type = 'status';
+			}
+		} elseif ( 'resend' === $action ) {
+			foreach ( $ids as $id ) {
+				$lead = FHM_DB::get( $id );
+				if ( $lead ) { FHM_Ajax::notify_admin( (array) $lead ); $n++; }
+			}
+			$type = 'resent';
+		}
+
+		wp_safe_redirect( add_query_arg( array( 'fhm_bulk' => $type, 'n' => $n ), $back ) );
+		exit;
+	}
+
+	/** Output CSV (BOM + antet) dintr-un set de rânduri ARRAY_A. */
+	private static function stream_csv( $rows ) {
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=lead-uri-montaj.csv' );
+		$out = fopen( 'php://output', 'w' );
+		fwrite( $out, "\xEF\xBB\xBF" ); // BOM pentru diacritice corecte în Excel
+		fputcsv( $out, array( 'ID', 'Data', 'Judet', 'Slug', 'Localitate', 'Nume', 'Telefon', 'Email', 'Produs', 'Detalii', 'IP', 'Status' ) );
+		if ( $rows ) {
+			foreach ( $rows as $r ) {
+				fputcsv( $out, array( $r['id'], $r['created_at'], $r['judet'], $r['judet_slug'], $r['localitate'], $r['nume'], $r['telefon'], $r['email'], $r['produs'], $r['detalii'], $r['ip'], $r['status'] ) );
+			}
+		}
+		fclose( $out );
+	}
+
 	public static function set_status() {
 		if ( ! current_user_can( 'manage_options' ) ) { wp_send_json_error(); }
 		check_ajax_referer( 'fhm_admin', 'nonce' );
@@ -292,19 +393,7 @@ class FHM_Admin {
 		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acces interzis.', 'fhm' ) ); }
 		check_admin_referer( 'fhm_export' );
 
-		$rows = FHM_DB::get_filtered( array_merge( self::filters(), array( 'output' => ARRAY_A ) ) );
-		nocache_headers();
-		header( 'Content-Type: text/csv; charset=utf-8' );
-		header( 'Content-Disposition: attachment; filename=lead-uri-montaj.csv' );
-		$out = fopen( 'php://output', 'w' );
-		fwrite( $out, "\xEF\xBB\xBF" ); // BOM pentru diacritice corecte în Excel
-		fputcsv( $out, array( 'ID', 'Data', 'Judet', 'Slug', 'Localitate', 'Nume', 'Telefon', 'Email', 'Produs', 'Detalii', 'IP', 'Status' ) );
-		if ( $rows ) {
-			foreach ( $rows as $r ) {
-				fputcsv( $out, array( $r['id'], $r['created_at'], $r['judet'], $r['judet_slug'], $r['localitate'], $r['nume'], $r['telefon'], $r['email'], $r['produs'], $r['detalii'], $r['ip'], $r['status'] ) );
-			}
-		}
-		fclose( $out );
+		self::stream_csv( FHM_DB::get_filtered( array_merge( self::filters(), array( 'output' => ARRAY_A ) ) ) );
 		exit;
 	}
 }
