@@ -13,6 +13,7 @@ class FHM_Admin {
 		add_action( 'admin_menu', array( __CLASS__, 'menu' ) );
 		add_action( 'admin_post_fhm_export', array( __CLASS__, 'export_csv' ) );
 		add_action( 'admin_post_fhm_delete', array( __CLASS__, 'delete_lead' ) );
+		add_action( 'admin_post_fhm_resend', array( __CLASS__, 'resend_notification' ) );
 		add_action( 'wp_ajax_fhm_set_status', array( __CLASS__, 'set_status' ) );
 	}
 
@@ -42,6 +43,12 @@ class FHM_Admin {
 	public static function page() {
 		if ( ! current_user_can( 'manage_options' ) ) { return; }
 
+		// Vizualizare lead în detaliu.
+		if ( isset( $_GET['view'] ) ) {
+			self::render_detail( (int) $_GET['view'] );
+			return;
+		}
+
 		$filters = self::filters();
 		$paged   = isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1;
 		$total   = FHM_DB::count_filtered( $filters );
@@ -70,6 +77,9 @@ class FHM_Admin {
 
 		if ( isset( $_GET['fhm_deleted'] ) ) {
 			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Lead șters.', 'fhm' ) . '</p></div>';
+		}
+		if ( isset( $_GET['fhm_sent'] ) ) {
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Notificare retrimisă către admin.', 'fhm' ) . '</p></div>';
 		}
 
 		// Bară de filtre.
@@ -106,7 +116,9 @@ class FHM_Admin {
 
 		if ( $rows ) {
 			foreach ( $rows as $r ) {
-				$del = wp_nonce_url( admin_url( 'admin-post.php?action=fhm_delete&id=' . (int) $r->id ), 'fhm_delete_' . (int) $r->id );
+				$del    = wp_nonce_url( admin_url( 'admin-post.php?action=fhm_delete&id=' . (int) $r->id ), 'fhm_delete_' . (int) $r->id );
+				$resend = wp_nonce_url( admin_url( 'admin-post.php?action=fhm_resend&id=' . (int) $r->id ), 'fhm_resend_' . (int) $r->id );
+				$view   = admin_url( 'admin.php?page=fhm-leads&view=' . (int) $r->id );
 
 				echo '<tr>';
 				echo '<td>' . esc_html( $r->created_at ) . '</td>';
@@ -124,7 +136,11 @@ class FHM_Admin {
 				}
 				echo '</select></td>';
 
-				echo '<td><a href="' . esc_url( $del ) . '" class="fhm-del" onclick="return confirm(\'' . esc_js( __( 'Ștergi acest lead?', 'fhm' ) ) . '\')">' . esc_html__( 'Șterge', 'fhm' ) . '</a></td>';
+				echo '<td>';
+				echo '<a href="' . esc_url( $view ) . '">' . esc_html__( 'Vezi', 'fhm' ) . '</a> | ';
+				echo '<a href="' . esc_url( $resend ) . '">' . esc_html__( 'Retrimite', 'fhm' ) . '</a> | ';
+				echo '<a href="' . esc_url( $del ) . '" style="color:#b3261e" onclick="return confirm(\'' . esc_js( __( 'Ștergi acest lead?', 'fhm' ) ) . '\')">' . esc_html__( 'Șterge', 'fhm' ) . '</a>';
+				echo '</td>';
 				echo '</tr>';
 			}
 		} else {
@@ -148,7 +164,11 @@ class FHM_Admin {
 
 		echo '</div>';
 
-		// JS inline pentru salvarea statusului prin AJAX.
+		self::status_script( $ajax_nonce );
+	}
+
+	/** Script inline pentru salvarea statusului prin AJAX (folosit în listă și în detaliu). */
+	private static function status_script( $ajax_nonce ) {
 		$ajax_url = admin_url( 'admin-ajax.php' );
 		?>
 		<script>
@@ -172,6 +192,74 @@ class FHM_Admin {
 		} )();
 		</script>
 		<?php
+	}
+
+	/** Vizualizare lead în detaliu. */
+	private static function render_detail( $id ) {
+		$lead = FHM_DB::get( $id );
+		$list = admin_url( 'admin.php?page=fhm-leads' );
+
+		echo '<div class="wrap">';
+		echo '<h1>' . esc_html__( 'Detalii lead', 'fhm' ) . ' <a href="' . esc_url( $list ) . '" class="page-title-action">' . esc_html__( '← Înapoi la listă', 'fhm' ) . '</a></h1>';
+
+		if ( ! $lead ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Lead inexistent.', 'fhm' ) . '</p></div></div>';
+			return;
+		}
+
+		$ajax_nonce = wp_create_nonce( 'fhm_admin' );
+		$resend     = wp_nonce_url( admin_url( 'admin-post.php?action=fhm_resend&id=' . (int) $lead->id ), 'fhm_resend_' . (int) $lead->id );
+		$del        = wp_nonce_url( admin_url( 'admin-post.php?action=fhm_delete&id=' . (int) $lead->id ), 'fhm_delete_' . (int) $lead->id );
+
+		$tel_html   = $lead->telefon ? '<a href="tel:' . esc_attr( preg_replace( '/[^0-9+]/', '', $lead->telefon ) ) . '">' . esc_html( $lead->telefon ) . '</a>' : '—';
+		$email_html = $lead->email ? '<a href="mailto:' . esc_attr( $lead->email ) . '">' . esc_html( $lead->email ) . '</a>' : '—';
+
+		$status_sel  = '<select class="fhm-status-select" data-id="' . (int) $lead->id . '">';
+		foreach ( FHM_DB::statuses() as $key => $label ) {
+			$status_sel .= '<option value="' . esc_attr( $key ) . '"' . selected( $lead->status, $key, false ) . '>' . esc_html( $label ) . '</option>';
+		}
+		$status_sel .= '</select>';
+
+		$rows = array(
+			__( 'Data', 'fhm' )       => esc_html( $lead->created_at ),
+			__( 'Județ', 'fhm' )      => esc_html( $lead->judet ),
+			__( 'Localitate', 'fhm' ) => esc_html( $lead->localitate ),
+			__( 'Nume', 'fhm' )       => esc_html( $lead->nume ),
+			__( 'Telefon', 'fhm' )    => $tel_html,
+			__( 'Email', 'fhm' )      => $email_html,
+			__( 'Produs', 'fhm' )     => esc_html( $lead->produs ),
+			__( 'Detalii', 'fhm' )    => nl2br( esc_html( $lead->detalii ) ),
+			__( 'IP', 'fhm' )         => esc_html( $lead->ip ),
+			__( 'Status', 'fhm' )     => $status_sel,
+		);
+
+		echo '<table class="form-table">';
+		foreach ( $rows as $label => $value ) {
+			echo '<tr><th scope="row" style="width:160px">' . esc_html( $label ) . '</th><td>' . $value . '</td></tr>';
+		}
+		echo '</table>';
+
+		echo '<p>';
+		echo '<a href="' . esc_url( $resend ) . '" class="button button-primary">' . esc_html__( 'Retrimite notificare', 'fhm' ) . '</a> ';
+		echo '<a href="' . esc_url( $del ) . '" class="button" style="color:#b3261e" onclick="return confirm(\'' . esc_js( __( 'Ștergi acest lead?', 'fhm' ) ) . '\')">' . esc_html__( 'Șterge', 'fhm' ) . '</a>';
+		echo '</p>';
+
+		echo '</div>';
+		self::status_script( $ajax_nonce );
+	}
+
+	public static function resend_notification() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acces interzis.', 'fhm' ) ); }
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+		check_admin_referer( 'fhm_resend_' . $id );
+		$lead = $id ? FHM_DB::get( $id ) : null;
+		if ( $lead ) {
+			FHM_Ajax::notify_admin( (array) $lead );
+		}
+		$back = wp_get_referer();
+		if ( ! $back ) { $back = admin_url( 'admin.php?page=fhm-leads' ); }
+		wp_safe_redirect( add_query_arg( 'fhm_sent', '1', remove_query_arg( 'fhm_sent', $back ) ) );
+		exit;
 	}
 
 	public static function set_status() {

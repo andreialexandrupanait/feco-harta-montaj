@@ -189,20 +189,10 @@ class FHM_DB {
 		return $wpdb->get_col( "SELECT DISTINCT produs FROM $table WHERE produs <> '' ORDER BY produs ASC" );
 	}
 
-	/** Șterge lead-urile mai vechi de N luni. */
-	public static function delete_older_than( $months ) {
+	/** Un singur lead după ID. */
+	public static function get( $id ) {
 		global $wpdb;
-		$months = (int) $months;
-		if ( $months < 1 ) {
-			return 0;
-		}
-		$table  = self::table();
-		$cutoff = gmdate( 'Y-m-d H:i:s', strtotime( "-{$months} months", current_time( 'timestamp' ) ) );
-		return $wpdb->query( $wpdb->prepare( "DELETE FROM $table WHERE created_at < %s", $cutoff ) );
-	}
-
-	/** Callback cron de retenție — citește numărul de luni din setări. */
-	public static function run_cleanup() {
-		self::delete_older_than( (int) FHM_Settings::get( 'retention_months' ) );
+		$table = self::table();
+		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", (int) $id ) );
 	}
 }
