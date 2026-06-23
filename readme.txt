@@ -1,5 +1,5 @@
 === FECO – Harta Montaj Fose Septice ===
-Version: 1.0.7
+Version: 1.0.8
 Author: Simplead (https://simplead.ro)
 Requires at least: 5.5
 Requires PHP: 7.2
@@ -19,11 +19,8 @@ SETARI
 Meniu "Lead-uri montaj" > "Setari". De acolo configurezi:
 - Adrese email notificari (una/mai multe, separate prin virgula), expeditor (From), subiect.
 - Auto-reply catre client (on/off + subiect + mesaj).
-- Texte formular (titlu/subtitlu/buton/mesaj succes/consimtamant + URL confidentialitate).
 - Produs obligatoriu + limitare la o categorie WooCommerce.
-- reCAPTCHA v3 (chei in setari sau constante) + rate-limit.
-- Retentie (stergere automata lead-uri vechi) + status implicit.
-- Culori harta (disponibil/selectat/hover).
+- Pagina Thank-you: redirect dupa trimitere, strict cand bifa e activa si e aleasa o pagina.
 
 EMAIL NOTIFICARI
 Implicit merge pe emailul de admin daca nu setezi adrese in Setari.
@@ -44,7 +41,12 @@ Fara aceste constante, reCAPTCHA e dezactivat (raman honeypot + rate-limit).
 LEAD-URI (admin)
 Lista de lead-uri are filtre (judet / produs / interval data), cautare, paginare,
 status editabil (nou/contactat/ofertat/inchis), stergere si Export CSV (cu filtre).
-Telefonul si emailul sunt clicabile (tel: / mailto:).
+Telefonul si emailul sunt clicabile (tel: / mailto:). Fiecare lead are:
+- "Vezi" -> vizualizare in detaliu (toate campurile);
+- "Retrimite" -> retrimite notificarea catre admin pentru acel lead.
+
+EMAIL NOTIFICARE
+Notificarea catre admin e HTML, cu telefon (tel:) si email (mailto:) apelabile.
 
 EMAIL CATRE CLIENT
 Daca lead-ul lasa email, primeste un auto-reply de confirmare, iar notificarea catre

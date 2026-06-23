@@ -3,10 +3,14 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /**
  * Procesarea trimiterii formularului prin admin-ajax (nonce, sanitizare,
- * honeypot, rate-limit, validare telefon, reCAPTCHA opțional, consimțământ
- * GDPR), salvare în tabelă + notificare email + auto-reply către client.
+ * honeypot, rate-limit, validare telefon, reCAPTCHA opțional prin constante,
+ * consimțământ GDPR), salvare în tabelă + notificare email (HTML, cu telefon
+ * și email apelabile) + auto-reply către client.
  */
 class FHM_Ajax {
+
+	const RL_MAX    = 6;
+	const RL_WINDOW = 10; // minute
 
 	public static function init() {
 		add_action( 'wp_ajax_fhm_submit', array( __CLASS__, 'submit' ) );
@@ -36,23 +40,12 @@ class FHM_Ajax {
 		return (bool) preg_match( '/^0(7\d{8}|[23]\d{8})$/', $digits );
 	}
 
-	/** Secretul reCAPTCHA din setări sau, în lipsă, din constantă. */
-	private static function recaptcha_secret() {
-		$secret = FHM_Settings::get( 'recaptcha_secret' );
-		if ( '' === $secret && defined( 'FHM_RECAPTCHA_SECRET' ) && FHM_RECAPTCHA_SECRET ) {
-			$secret = FHM_RECAPTCHA_SECRET;
-		}
-		return $secret;
-	}
-
 	/**
-	 * reCAPTCHA v3: trece dacă nu e configurat sau dacă verificarea reușește.
-	 * Dacă serviciul Google pică, nu blocăm lead-ul.
+	 * reCAPTCHA v3 (opțional, prin constante FHM_RECAPTCHA_SECRET).
+	 * Trece dacă nu e configurat sau dacă verificarea reușește.
 	 */
 	private static function recaptcha_ok() {
-		$secret  = self::recaptcha_secret();
-		$enabled = FHM_Settings::get( 'recaptcha_enabled' ) || ( defined( 'FHM_RECAPTCHA_SECRET' ) && FHM_RECAPTCHA_SECRET );
-		if ( ! $enabled || '' === $secret ) {
+		if ( ! ( defined( 'FHM_RECAPTCHA_SECRET' ) && FHM_RECAPTCHA_SECRET ) ) {
 			return true;
 		}
 		$token = isset( $_POST['recaptcha_token'] ) ? sanitize_text_field( wp_unslash( $_POST['recaptcha_token'] ) ) : '';
@@ -62,7 +55,7 @@ class FHM_Ajax {
 		$resp = wp_remote_post( 'https://www.google.com/recaptcha/api/siteverify', array(
 			'timeout' => 10,
 			'body'    => array(
-				'secret'   => $secret,
+				'secret'   => FHM_RECAPTCHA_SECRET,
 				'response' => $token,
 				'remoteip' => self::ip(),
 			),
@@ -80,6 +73,88 @@ class FHM_Ajax {
 		return true;
 	}
 
+	/** Antetul From din setări (sau gol). */
+	private static function from_header() {
+		$from_email = sanitize_email( (string) FHM_Settings::get( 'from_email' ) );
+		$from_name  = (string) FHM_Settings::get( 'from_name' );
+		if ( $from_email && is_email( $from_email ) ) {
+			return 'From: ' . ( $from_name ? $from_name . ' ' : '' ) . '<' . $from_email . '>';
+		}
+		return '';
+	}
+
+	/**
+	 * Trimite (sau retrimite) notificarea HTML către admin pentru un lead.
+	 * Telefonul și emailul sunt apelabile (tel: / mailto:). Reutilizat de
+	 * formular și de butonul „Retrimite notificare" din dashboard.
+	 *
+	 * @param array $lead judet, localitate, nume, telefon, email, produs, detalii, created_at.
+	 * @return bool
+	 */
+	public static function notify_admin( array $lead ) {
+		$judet      = isset( $lead['judet'] ) ? $lead['judet'] : '';
+		$localitate = isset( $lead['localitate'] ) ? $lead['localitate'] : '';
+		$nume       = isset( $lead['nume'] ) ? $lead['nume'] : '';
+		$telefon    = isset( $lead['telefon'] ) ? $lead['telefon'] : '';
+		$email      = isset( $lead['email'] ) ? $lead['email'] : '';
+		$produs     = isset( $lead['produs'] ) ? $lead['produs'] : '';
+		$detalii    = isset( $lead['detalii'] ) ? $lead['detalii'] : '';
+		$data       = isset( $lead['created_at'] ) && $lead['created_at'] ? $lead['created_at'] : current_time( 'mysql' );
+
+		// Destinatari: din setări (listă) sau emailul de admin.
+		$recipients = array();
+		foreach ( explode( ',', (string) FHM_Settings::get( 'notify_emails' ) ) as $e ) {
+			$e = sanitize_email( trim( $e ) );
+			if ( $e && is_email( $e ) ) { $recipients[] = $e; }
+		}
+		if ( empty( $recipients ) ) {
+			$recipients = array( get_option( 'admin_email' ) );
+		}
+		$to = apply_filters( 'fhm_notify_email', $recipients );
+
+		// Subiect cu variabile {judet} / {nume}.
+		$subject = (string) FHM_Settings::get( 'notify_subject' );
+		$subject = str_replace( array( '{judet}', '{nume}' ), array( $judet, $nume ), $subject );
+		if ( '' === trim( $subject ) ) {
+			$subject = sprintf( __( 'Cerere montaj fose septice — %s', 'fhm' ), $judet );
+		}
+
+		// Telefon / email apelabile.
+		$tel_digits = preg_replace( '/[^0-9+]/', '', $telefon );
+		$tel_html   = $telefon ? '<a href="tel:' . esc_attr( $tel_digits ) . '">' . esc_html( $telefon ) . '</a>' : '—';
+		$email_html = ( $email && is_email( $email ) ) ? '<a href="mailto:' . esc_attr( $email ) . '">' . esc_html( $email ) . '</a>' : esc_html( $email );
+
+		$rows  = array(
+			__( 'Județ', 'fhm' )      => esc_html( $judet ),
+			__( 'Localitate', 'fhm' ) => esc_html( $localitate ),
+			__( 'Nume', 'fhm' )       => esc_html( $nume ),
+			__( 'Telefon', 'fhm' )    => $tel_html,
+			__( 'Email', 'fhm' )      => $email_html,
+			__( 'Produs', 'fhm' )     => esc_html( $produs ),
+			__( 'Detalii', 'fhm' )    => nl2br( esc_html( $detalii ) ),
+			__( 'Data', 'fhm' )       => esc_html( $data ),
+		);
+
+		$body  = '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;color:#1d2530">';
+		$body .= '<p style="font-weight:700">' . esc_html__( 'Cerere nouă de montaj fose septice:', 'fhm' ) . '</p>';
+		$body .= '<table cellpadding="6" cellspacing="0" style="border-collapse:collapse">';
+		foreach ( $rows as $label => $value ) {
+			$body .= '<tr><td style="color:#6b7785;vertical-align:top">' . esc_html( $label ) . '</td><td style="font-weight:600">' . $value . '</td></tr>';
+		}
+		$body .= '</table></div>';
+
+		$headers = array( 'Content-Type: text/html; charset=UTF-8' );
+		$from    = self::from_header();
+		if ( $from ) {
+			$headers[] = $from;
+		}
+		if ( '' !== $email && is_email( $email ) ) {
+			$headers[] = 'Reply-To: ' . $nume . ' <' . $email . '>';
+		}
+
+		return wp_mail( $to, $subject, $body, $headers );
+	}
+
 	public static function submit() {
 		check_ajax_referer( 'fhm_submit', 'nonce' );
 
@@ -88,12 +163,10 @@ class FHM_Ajax {
 			wp_send_json_success( array( 'message' => __( 'Mulțumim!', 'fhm' ) ) );
 		}
 
-		// Rate-limit simplu pe IP (configurabil din setări).
-		$rl_max    = max( 1, (int) FHM_Settings::get( 'ratelimit_max' ) );
-		$rl_window = max( 1, (int) FHM_Settings::get( 'ratelimit_window' ) );
-		$key       = 'fhm_rl_' . md5( self::ip() );
-		$cnt       = (int) get_transient( $key );
-		if ( $cnt >= $rl_max ) {
+		// Rate-limit simplu pe IP.
+		$key = 'fhm_rl_' . md5( self::ip() );
+		$cnt = (int) get_transient( $key );
+		if ( $cnt >= self::RL_MAX ) {
 			wp_send_json_error( array( 'message' => __( 'Prea multe cereri. Încearcă peste câteva minute.', 'fhm' ) ) );
 		}
 
@@ -137,7 +210,7 @@ class FHM_Ajax {
 			wp_send_json_error( array( 'message' => __( 'Adresa de email nu este validă.', 'fhm' ), 'field' => 'email' ) );
 		}
 
-		$ok = FHM_DB::insert( array(
+		$lead = array(
 			'judet'      => $judet,
 			'judet_slug' => $slug,
 			'nume'       => $nume,
@@ -147,54 +220,17 @@ class FHM_Ajax {
 			'localitate' => $localitate,
 			'detalii'    => $detalii,
 			'ip'         => self::ip(),
-			'status'     => FHM_Settings::get( 'default_status' ),
-		) );
+		);
 
+		$ok = FHM_DB::insert( $lead );
 		if ( false === $ok ) {
 			wp_send_json_error( array( 'message' => __( 'Eroare la salvare. Te rugăm reîncearcă.', 'fhm' ) ) );
 		}
 
-		set_transient( $key, $cnt + 1, $rl_window * MINUTE_IN_SECONDS );
+		set_transient( $key, $cnt + 1, self::RL_WINDOW * MINUTE_IN_SECONDS );
 
-		// Destinatari notificare: din setări (listă) sau emailul de admin.
-		$recipients = array();
-		foreach ( explode( ',', (string) FHM_Settings::get( 'notify_emails' ) ) as $e ) {
-			$e = sanitize_email( trim( $e ) );
-			if ( $e && is_email( $e ) ) { $recipients[] = $e; }
-		}
-		if ( empty( $recipients ) ) {
-			$recipients = array( get_option( 'admin_email' ) );
-		}
-		$to = apply_filters( 'fhm_notify_email', $recipients );
-
-		// Subiect cu variabile {judet} / {nume}.
-		$subject = (string) FHM_Settings::get( 'notify_subject' );
-		$subject = str_replace( array( '{judet}', '{nume}' ), array( $judet, $nume ), $subject );
-		if ( '' === trim( $subject ) ) {
-			$subject = sprintf( __( 'Cerere montaj fose septice — %s', 'fhm' ), $judet );
-		}
-
-		$body  = __( 'Cerere nouă de montaj fose septice:', 'fhm' ) . "\n\n";
-		$body .= 'Județ:      ' . $judet . "\n";
-		$body .= 'Localitate: ' . $localitate . "\n";
-		$body .= 'Nume:       ' . $nume . "\n";
-		$body .= 'Telefon:    ' . $telefon . "\n";
-		$body .= 'Email:      ' . $email . "\n";
-		$body .= 'Produs:     ' . $produs . "\n";
-		$body .= 'Detalii:    ' . $detalii . "\n";
-		$body .= 'Data:       ' . current_time( 'mysql' ) . "\n";
-
-		// Headers: From (din setări) + Reply-To = emailul clientului.
-		$headers    = array();
-		$from_email = sanitize_email( (string) FHM_Settings::get( 'from_email' ) );
-		$from_name  = (string) FHM_Settings::get( 'from_name' );
-		if ( $from_email && is_email( $from_email ) ) {
-			$headers[] = 'From: ' . ( $from_name ? $from_name . ' ' : '' ) . '<' . $from_email . '>';
-		}
-		if ( '' !== $email && is_email( $email ) ) {
-			$headers[] = 'Reply-To: ' . $nume . ' <' . $email . '>';
-		}
-		wp_mail( $to, $subject, $body, $headers );
+		// Notificare către admin (HTML, telefon/email apelabile).
+		self::notify_admin( $lead );
 
 		// Auto-reply către client (dacă a lăsat email și e activat).
 		$autoreply = FHM_Settings::get( 'autoreply_enabled' ) && apply_filters( 'fhm_autoreply_enabled', true );
@@ -203,13 +239,13 @@ class FHM_Ajax {
 			$ar_body    = str_replace( array( '{nume}', '{judet}' ), array( $nume, $judet ), (string) FHM_Settings::get( 'autoreply_body' ) );
 			$ar_body    = apply_filters( 'fhm_autoreply_body', $ar_body, $nume, $judet, $produs );
 			$ar_headers = array();
-			if ( $from_email && is_email( $from_email ) ) {
-				$ar_headers[] = 'From: ' . ( $from_name ? $from_name . ' ' : '' ) . '<' . $from_email . '>';
+			$from       = self::from_header();
+			if ( $from ) {
+				$ar_headers[] = $from;
 			}
 			wp_mail( $email, $ar_subject, $ar_body, $ar_headers );
 		}
 
-		$success = (string) FHM_Settings::get( 'form_success' );
-		wp_send_json_success( array( 'message' => '' !== trim( $success ) ? $success : __( 'Mulțumim! Te contactăm în cel mai scurt timp.', 'fhm' ) ) );
+		wp_send_json_success( array( 'message' => __( 'Mulțumim! Te contactăm în cel mai scurt timp.', 'fhm' ) ) );
 	}
 }

@@ -73,14 +73,18 @@ class FHM_Shortcode {
 		return apply_filters( 'fhm_products', $products );
 	}
 
-	/** Cheia site reCAPTCHA v3 (setări→constantă), doar dacă e activat. */
+	/** Cheia site reCAPTCHA v3 din constantă (opțional). */
 	private static function recaptcha_key() {
-		$key = FHM_Settings::get( 'recaptcha_site' );
-		if ( '' === $key && defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY ) {
-			$key = FHM_RECAPTCHA_SITE_KEY;
+		return ( defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY ) ? (string) FHM_RECAPTCHA_SITE_KEY : '';
+	}
+
+	/** URL-ul paginii de redirect (Thank-you), doar dacă e activat și setat. */
+	private static function redirect_url() {
+		if ( ! FHM_Settings::get( 'redirect_enabled' ) ) {
+			return '';
 		}
-		$enabled = FHM_Settings::get( 'recaptcha_enabled' ) || ( defined( 'FHM_RECAPTCHA_SITE_KEY' ) && FHM_RECAPTCHA_SITE_KEY );
-		return ( $enabled && $key ) ? (string) $key : '';
+		$page_id = (int) FHM_Settings::get( 'redirect_page_id' );
+		return $page_id ? (string) get_permalink( $page_id ) : '';
 	}
 
 	public static function render( $atts = array() ) {
@@ -88,22 +92,9 @@ class FHM_Shortcode {
 		wp_enqueue_style( 'fhm' );
 		wp_enqueue_script( 'fhm' );
 
-		// Culori hartă din setări (variabile CSS).
-		$col_avail = sanitize_hex_color( FHM_Settings::get( 'map_color_available' ) );
-		$col_sel   = sanitize_hex_color( FHM_Settings::get( 'map_color_selected' ) );
-		$col_hover = sanitize_hex_color( FHM_Settings::get( 'map_color_hover' ) );
-		if ( $col_avail && $col_sel && $col_hover ) {
-			wp_add_inline_style( 'fhm', '.fhm-wrap{--fhm-jud:' . $col_avail . ';--fhm-accent:' . $col_sel . ';--fhm-jud-hover:' . $col_hover . ';}' );
-		}
-
 		$recaptcha_key = self::recaptcha_key();
 		if ( '' !== $recaptcha_key ) {
 			wp_enqueue_script( 'fhm-recaptcha', 'https://www.google.com/recaptcha/api.js?render=' . rawurlencode( $recaptcha_key ), array(), null, true );
-		}
-
-		$privacy = FHM_Settings::get( 'privacy_url' );
-		if ( '' === $privacy ) {
-			$privacy = get_privacy_policy_url();
 		}
 
 		wp_localize_script( 'fhm', 'FHM_DATA', array(
@@ -112,19 +103,13 @@ class FHM_Shortcode {
 			'svgUrl'          => FHM_URL . 'assets/img/romania.svg?v=' . FHM_VERSION,
 			'products'        => self::products(),
 			'productRequired' => (bool) FHM_Settings::get( 'product_required' ),
-			'privacyUrl'      => $privacy,
+			'privacyUrl'      => get_privacy_policy_url(),
 			'recaptchaKey'    => $recaptcha_key,
-			'texts'           => array(
-				'title'    => FHM_Settings::get( 'form_title' ),
-				'subtitle' => FHM_Settings::get( 'form_subtitle' ),
-				'button'   => FHM_Settings::get( 'form_button' ),
-				'success'  => FHM_Settings::get( 'form_success' ),
-				'consent'  => FHM_Settings::get( 'consent_text' ),
-			),
+			'redirectUrl'     => self::redirect_url(),
 		) );
 
-		$sw_avail = $col_avail ? $col_avail : '#cfe0f3';
-		$sw_sel   = $col_sel ? $col_sel : '#3e72bb';
+		$sw_avail = '#cfe0f3';
+		$sw_sel   = '#3e72bb';
 
 		ob_start();
 		?>
